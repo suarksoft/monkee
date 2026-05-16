@@ -5,6 +5,14 @@ export const ROUTER_ABI = [
   'function WETH() external pure returns (address)',
 ];
 
+// MonadBotSwapper contract ABI
+export const SWAPPER_ABI = [
+  'function buyTokens(address[] calldata path, uint256 amountOutMin, address to, uint256 deadline) external payable returns (uint256[] memory amounts)',
+  'function sellTokens(uint256 amountIn, uint256 amountOutMin, address[] calldata path, address to, uint256 deadline) external returns (uint256[] memory amounts)',
+  'function getTokensOut(uint256 monAmount, address[] calldata path) external view returns (uint256 tokensOut, uint256 fee)',
+  'function feeBps() external view returns (uint256)',
+];
+
 export const ERC20_ABI = [
   'function balanceOf(address account) external view returns (uint256)',
   'function decimals() external view returns (uint8)',

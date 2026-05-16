@@ -3,27 +3,29 @@ import "@nomicfoundation/hardhat-toolbox-viem";
 import "@nomicfoundation/hardhat-ignition-viem";
 import "dotenv/config";
 
-const PRIVATE_KEY = process.env.PRIVATE_KEY || "";
+const PRIVATE_KEY = process.env.PRIVATE_KEY;
 const ETHERSCAN_API_KEY = process.env.ETHERSCAN_API_KEY || "";
+
+const accounts = PRIVATE_KEY ? [PRIVATE_KEY] : [];
 
 const config: HardhatUserConfig = {
   solidity: {
     version: "0.8.28",
     settings: {
       metadata: {
-        bytecodeHash: "ipfs", // Required for Sourcify verification
+        bytecodeHash: "ipfs",
       },
     },
   },
   networks: {
     monadTestnet: {
       url: "https://testnet-rpc.monad.xyz",
-      accounts: [PRIVATE_KEY],
+      accounts,
       chainId: 10143,
     },
     monadMainnet: {
       url: "https://rpc.monad.xyz",
-      accounts: [PRIVATE_KEY],
+      accounts,
       chainId: 143,
     },
   },

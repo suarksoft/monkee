@@ -1,6 +1,6 @@
 import { ethers } from 'ethers';
 import { PrismaClient } from '@prisma/client';
-import { ROUTER_ABI, ERC20_ABI, TRADING_DEFAULTS } from '../utils/constants';
+import { ROUTER_ABI, SWAPPER_ABI, ERC20_ABI, TRADING_DEFAULTS } from '../utils/constants';
 import { getSigner, getProvider, getBalance } from './wallet.service';
 import { TradeResult, Portfolio } from '../types';
 import { log, logError } from '../utils/logger';
@@ -8,6 +8,8 @@ import { log, logError } from '../utils/logger';
 const prisma = new PrismaClient();
 const ROUTER = process.env.DEX_ROUTER_ADDRESS!;
 const WMON = process.env.WMON_ADDRESS!;
+// Use swapper contract if deployed, otherwise fall back to direct DEX
+const SWAPPER = process.env.SWAPPER_ADDRESS;
 
 export async function executeBuy(
   telegramId: string,
@@ -31,28 +33,38 @@ export async function executeBuy(
     }
 
     const signer = await getSigner(user.privateKey);
-    const router = new ethers.Contract(ROUTER, ROUTER_ABI, signer);
-
     const amountIn = ethers.parseEther(monAmount);
     const path = [WMON, token.address];
+    const deadline = Math.floor(Date.now() / 1000) + TRADING_DEFAULTS.txDeadlineSeconds;
 
-    const amountsOut = await router.getAmountsOut(amountIn, path) as bigint[];
-    const minOut = (amountsOut[1] * BigInt(100 - TRADING_DEFAULTS.maxSlippage)) / 100n;
+    let receipt: { hash: string };
+    let tokenAmount: string;
 
-    const tx = await router.swapExactETHForTokens(
-      minOut,
-      path,
-      user.walletAddress,
-      Math.floor(Date.now() / 1000) + TRADING_DEFAULTS.txDeadlineSeconds,
-      {
+    if (SWAPPER) {
+      // Route through MonadBotSwapper (fee included)
+      const swapper = new ethers.Contract(SWAPPER, SWAPPER_ABI, signer);
+      const [tokensOut] = await swapper.getTokensOut(amountIn, path) as [bigint, bigint];
+      const minOut = (tokensOut * BigInt(100 - TRADING_DEFAULTS.maxSlippage)) / 100n;
+      const tx = await swapper.buyTokens(path, minOut, user.walletAddress, deadline, {
         value: amountIn,
         gasLimit: TRADING_DEFAULTS.gasLimit,
-      },
-    );
+      });
+      receipt = await tx.wait();
+      tokenAmount = ethers.formatUnits(tokensOut, token.decimals);
+    } else {
+      // Direct DEX fallback
+      const router = new ethers.Contract(ROUTER, ROUTER_ABI, signer);
+      const amountsOut = await router.getAmountsOut(amountIn, path) as bigint[];
+      const minOut = (amountsOut[1] * BigInt(100 - TRADING_DEFAULTS.maxSlippage)) / 100n;
+      const tx = await router.swapExactETHForTokens(minOut, path, user.walletAddress, deadline, {
+        value: amountIn,
+        gasLimit: TRADING_DEFAULTS.gasLimit,
+      });
+      receipt = await tx.wait();
+      tokenAmount = ethers.formatUnits(amountsOut[1], token.decimals);
+    }
 
-    const receipt = await tx.wait();
     const executionTimeMs = Date.now() - startTime;
-    const tokenAmount = ethers.formatUnits(amountsOut[1], token.decimals);
 
     await prisma.trade.create({
       data: {
@@ -108,7 +120,7 @@ export async function executeSell(
 
     const signer = await getSigner(user.privateKey);
     const tokenContract = new ethers.Contract(token.address, ERC20_ABI, signer);
-    const router = new ethers.Contract(ROUTER, ROUTER_ABI, signer);
+    const deadline = Math.floor(Date.now() / 1000) + TRADING_DEFAULTS.txDeadlineSeconds;
 
     let sellAmount: bigint;
     const tokenBalance = await tokenContract.balanceOf(user.walletAddress) as bigint;
@@ -124,28 +136,44 @@ export async function executeSell(
 
     if (sellAmount === 0n) throw new Error('Satılacak token yok');
 
-    const allowance = await tokenContract.allowance(user.walletAddress, ROUTER) as bigint;
-    if (allowance < sellAmount) {
-      const approveTx = await tokenContract.approve(ROUTER, ethers.MaxUint256);
-      await approveTx.wait();
+    const path = [token.address, WMON];
+    let receipt: { hash: string };
+    let monReceived: string;
+
+    if (SWAPPER) {
+      // Approve swapper contract
+      const allowance = await tokenContract.allowance(user.walletAddress, SWAPPER) as bigint;
+      if (allowance < sellAmount) {
+        const approveTx = await tokenContract.approve(SWAPPER, ethers.MaxUint256);
+        await approveTx.wait();
+      }
+      const swapper = new ethers.Contract(SWAPPER, SWAPPER_ABI, signer);
+      const router = new ethers.Contract(ROUTER, ROUTER_ABI, signer);
+      const amountsOut = await router.getAmountsOut(sellAmount, path) as bigint[];
+      const minOut = (amountsOut[1] * BigInt(100 - TRADING_DEFAULTS.maxSlippage)) / 100n;
+      const tx = await swapper.sellTokens(sellAmount, minOut, path, user.walletAddress, deadline, {
+        gasLimit: TRADING_DEFAULTS.gasLimit,
+      });
+      receipt = await tx.wait();
+      monReceived = ethers.formatEther(amountsOut[1]);
+    } else {
+      // Direct DEX fallback
+      const router = new ethers.Contract(ROUTER, ROUTER_ABI, signer);
+      const allowance = await tokenContract.allowance(user.walletAddress, ROUTER) as bigint;
+      if (allowance < sellAmount) {
+        const approveTx = await tokenContract.approve(ROUTER, ethers.MaxUint256);
+        await approveTx.wait();
+      }
+      const amountsOut = await router.getAmountsOut(sellAmount, path) as bigint[];
+      const minOut = (amountsOut[1] * BigInt(100 - TRADING_DEFAULTS.maxSlippage)) / 100n;
+      const tx = await router.swapExactTokensForETH(sellAmount, minOut, path, user.walletAddress, deadline, {
+        gasLimit: TRADING_DEFAULTS.gasLimit,
+      });
+      receipt = await tx.wait();
+      monReceived = ethers.formatEther(amountsOut[1]);
     }
 
-    const path = [token.address, WMON];
-    const amountsOut = await router.getAmountsOut(sellAmount, path) as bigint[];
-    const minOut = (amountsOut[1] * BigInt(100 - TRADING_DEFAULTS.maxSlippage)) / 100n;
-
-    const tx = await router.swapExactTokensForETH(
-      sellAmount,
-      minOut,
-      path,
-      user.walletAddress,
-      Math.floor(Date.now() / 1000) + TRADING_DEFAULTS.txDeadlineSeconds,
-      { gasLimit: TRADING_DEFAULTS.gasLimit },
-    );
-
-    const receipt = await tx.wait();
     const executionTimeMs = Date.now() - startTime;
-    const monReceived = ethers.formatEther(amountsOut[1]);
     const tokenAmountSold = ethers.formatUnits(sellAmount, token.decimals);
 
     await prisma.trade.create({
