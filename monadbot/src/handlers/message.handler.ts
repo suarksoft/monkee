@@ -62,7 +62,7 @@ export async function handleMessage(ctx: Context) {
         break;
       case 'BRIEFING':
         await ctx.sendChatAction('typing');
-        await sendBriefingToUser(ctx.telegram as never, userId, ctx);
+        await sendBriefingToUser(null as never, userId, ctx);
         break;
       case 'STOP_LOSS':
         await ctx.reply(
@@ -206,6 +206,7 @@ async function handleAnalyzeToken(ctx: Context, token: string) {
 }
 
 async function handleAnalyzeWallet(ctx: Context, address: string) {
+  await ctx.sendChatAction('typing');
   const analysis = await analyzeWallet(address);
 
   const holdings = analysis.currentHoldings.map(h =>
@@ -232,6 +233,14 @@ async function handleAnalyzeWallet(ctx: Context, address: string) {
       },
     },
   );
+
+  // Send DNA profile as follow-up
+  if (analysis.dnaText) {
+    await ctx.reply(
+      `🧬 *Wallet DNA:*\n\n${analysis.dnaText}`,
+      { parse_mode: 'Markdown' },
+    );
+  }
 }
 
 async function handleAdvice(ctx: Context, userId: string) {

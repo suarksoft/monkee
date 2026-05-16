@@ -1,7 +1,7 @@
 import dotenv from 'dotenv';
 dotenv.config();
 
-import { createBot } from './bot';
+import { createBot, startBackgroundServices } from './bot';
 import { log, logError } from './utils/logger';
 
 async function main() {
@@ -17,9 +17,14 @@ async function main() {
   process.once('SIGINT', () => { bot.stop('SIGINT'); process.exit(0); });
   process.once('SIGTERM', () => { bot.stop('SIGTERM'); process.exit(0); });
 
-  await bot.launch();
+  // Launch bot (non-blocking) then start background services
+  bot.launch().catch((err) => logError('Bot', 'Launch error', err));
   log('Bot', 'MonadBot is running!');
-  log('Bot', 'Press Ctrl+C to stop');
+
+  // Wait a tick for bot to connect, then start services
+  setTimeout(() => {
+    startBackgroundServices(bot).catch((err) => logError('Bot', 'Background services error', err));
+  }, 2000);
 }
 
 main().catch((err) => {
