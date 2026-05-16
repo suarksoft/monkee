@@ -1,0 +1,76 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id            Int           @id @default(autoincrement())
+  telegramId    String        @unique
+  username      String?
+  firstName     String?
+  walletAddress String
+  privateKey    String
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  trades        Trade[]
+  alerts        Alert[]
+  settings      UserSettings?
+}
+
+model UserSettings {
+  id              Int     @id @default(autoincrement())
+  userId          Int     @unique
+  user            User    @relation(fields: [userId], references: [id])
+  defaultBuyAmount String  @default("1")
+  slippage        Int     @default(5)
+  autoApprove     Boolean @default(false)
+  language        String  @default("tr")
+  sniperActive    Boolean @default(false)
+  sniperAmount    String  @default("1")
+  sniperMinHolder Int     @default(10)
+}
+
+model Trade {
+  id              Int      @id @default(autoincrement())
+  userId          Int
+  user            User     @relation(fields: [userId], references: [id])
+  tokenSymbol     String
+  tokenAddress    String
+  type            String
+  monAmount       String
+  tokenAmount     String
+  price           String
+  txHash          String
+  executionTimeMs Int
+  status          String   @default("SUCCESS")
+  createdAt       DateTime @default(now())
+}
+
+model Token {
+  id          Int      @id @default(autoincrement())
+  address     String   @unique
+  symbol      String
+  name        String
+  decimals    Int      @default(18)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  isVerified  Boolean  @default(false)
+  holderCount Int      @default(0)
+  volume24h   String   @default("0")
+  lastPrice   String   @default("0")
+}
+
+model Alert {
+  id          Int       @id @default(autoincrement())
+  userId      Int
+  user        User      @relation(fields: [userId], references: [id])
+  type        String
+  params      Json
+  active      Boolean   @default(true)
+  triggeredAt DateTime?
+  createdAt   DateTime  @default(now())
+}
