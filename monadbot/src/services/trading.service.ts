@@ -99,33 +99,36 @@ export async function executeBuy(
     if (!poolInfo) throw new Error(`$${tokenSymbol} için likidite havuzu bulunamadı`);
 
     const signer = await getSigner(user.privateKey);
-    const wmon = new ethers.Contract(WMON_ADDR, WMON_ABI, signer);
-    const router = new ethers.Contract(V3_ROUTER, V3_ROUTER_ABI, signer);
-    const deadline = Math.floor(Date.now() / 1000) + TRADING_DEFAULTS.txDeadlineSeconds;
+    let receipt: { hash: string };
 
-    // Step 1: Wrap MON → WMON
-    const wrapTx = await wmon.deposit({ value: amountIn, gasLimit: 100000 });
-    await wrapTx.wait();
-
-    // Step 2: Approve router
-    const allowance = await wmon.allowance(user.walletAddress, V3_ROUTER) as bigint;
-    if (allowance < amountIn) {
-      const approveTx = await wmon.approve(V3_ROUTER, ethers.MaxUint256, { gasLimit: 100000 });
-      await approveTx.wait();
+    if (SWAPPER) {
+      // Route through MonadBotSwapper (1% fee auto-collected)
+      const swapper = new ethers.Contract(SWAPPER, SWAPPER_ABI, signer);
+      const tx = await swapper.buyTokens(
+        token.address,
+        poolInfo.fee,
+        0n,
+        user.walletAddress,
+        { value: amountIn, gasLimit: TRADING_DEFAULTS.gasLimit },
+      );
+      receipt = await tx.wait();
+    } else {
+      // Direct V3 (no fee)
+      const wmon = new ethers.Contract(WMON_ADDR, WMON_ABI, signer);
+      const router = new ethers.Contract(V3_ROUTER, V3_ROUTER_ABI, signer);
+      const wrapTx = await wmon.deposit({ value: amountIn, gasLimit: 100000 });
+      await wrapTx.wait();
+      const allowance = await wmon.allowance(user.walletAddress, V3_ROUTER) as bigint;
+      if (allowance < amountIn) {
+        const approveTx = await wmon.approve(V3_ROUTER, ethers.MaxUint256, { gasLimit: 100000 });
+        await approveTx.wait();
+      }
+      const tx = await router.exactInputSingle({
+        tokenIn: WMON_ADDR, tokenOut: token.address, fee: poolInfo.fee,
+        recipient: user.walletAddress, amountIn, amountOutMinimum: 0n, sqrtPriceLimitX96: 0n,
+      }, { gasLimit: TRADING_DEFAULTS.gasLimit });
+      receipt = await tx.wait();
     }
-
-    // Step 3: Swap WMON → token
-    const tx = await router.exactInputSingle({
-      tokenIn: WMON_ADDR,
-      tokenOut: token.address,
-      fee: poolInfo.fee,
-      recipient: user.walletAddress,
-      amountIn,
-      amountOutMinimum: 0n, // Accept any output (hackathon mode)
-      sqrtPriceLimitX96: 0n,
-    }, { gasLimit: TRADING_DEFAULTS.gasLimit });
-
-    const receipt = await tx.wait();
     const executionTimeMs = Date.now() - startTime;
 
     // Estimate token amount from price
@@ -195,36 +198,43 @@ export async function executeSell(
     const poolInfo = await getPoolAddress(token.address);
     if (!poolInfo) throw new Error(`$${tokenSymbol} için likidite havuzu bulunamadı`);
 
-    // Approve router for token
-    const allowance = await tokenContract.allowance(user.walletAddress, V3_ROUTER) as bigint;
-    if (allowance < sellAmount) {
-      const approveTx = await tokenContract.approve(V3_ROUTER, ethers.MaxUint256, { gasLimit: 100000 });
-      await approveTx.wait();
-    }
+    let receipt: { hash: string };
+    let monReceived: string;
 
-    // Swap token → WMON (router delivers to this contract first)
-    const deadline = Math.floor(Date.now() / 1000) + TRADING_DEFAULTS.txDeadlineSeconds;
-    const tx = await router.exactInputSingle({
-      tokenIn: token.address,
-      tokenOut: WMON_ADDR,
-      fee: poolInfo.fee,
-      recipient: user.walletAddress, // WMON goes to user
-      amountIn: sellAmount,
-      amountOutMinimum: 0n,
-      sqrtPriceLimitX96: 0n,
-    }, { gasLimit: TRADING_DEFAULTS.gasLimit });
-
-    const receipt = await tx.wait();
-
-    // Unwrap WMON → MON
-    const wmonReceived = await wmon.balanceOf(user.walletAddress) as bigint;
-    if (wmonReceived > 0n) {
-      const unwrapTx = await wmon.withdraw(wmonReceived, { gasLimit: 100000 });
-      await unwrapTx.wait();
+    if (SWAPPER) {
+      // Approve swapper for token
+      const allowance = await tokenContract.allowance(user.walletAddress, SWAPPER) as bigint;
+      if (allowance < sellAmount) {
+        const approveTx = await tokenContract.approve(SWAPPER, ethers.MaxUint256, { gasLimit: 100000 });
+        await approveTx.wait();
+      }
+      const swapper = new ethers.Contract(SWAPPER, SWAPPER_ABI, signer);
+      const tx = await swapper.sellTokens(
+        token.address, poolInfo.fee, sellAmount, 0n, user.walletAddress,
+        { gasLimit: TRADING_DEFAULTS.gasLimit },
+      );
+      receipt = await tx.wait();
+      // Estimate MON received (swapper unwraps automatically)
+      const balAfter = await getProvider().getBalance(user.walletAddress);
+      monReceived = ethers.formatEther(balAfter);
+    } else {
+      // Direct V3 sell
+      const allowance = await tokenContract.allowance(user.walletAddress, V3_ROUTER) as bigint;
+      if (allowance < sellAmount) {
+        const approveTx = await tokenContract.approve(V3_ROUTER, ethers.MaxUint256, { gasLimit: 100000 });
+        await approveTx.wait();
+      }
+      const tx = await router.exactInputSingle({
+        tokenIn: token.address, tokenOut: WMON_ADDR, fee: poolInfo.fee,
+        recipient: user.walletAddress, amountIn: sellAmount, amountOutMinimum: 0n, sqrtPriceLimitX96: 0n,
+      }, { gasLimit: TRADING_DEFAULTS.gasLimit });
+      receipt = await tx.wait();
+      const wmonBal = await wmon.balanceOf(user.walletAddress) as bigint;
+      if (wmonBal > 0n) { await (await wmon.withdraw(wmonBal, { gasLimit: 100000 })).wait(); }
+      monReceived = ethers.formatEther(wmonBal);
     }
 
     const executionTimeMs = Date.now() - startTime;
-    const monReceived = ethers.formatEther(wmonReceived);
     const tokenAmountSold = ethers.formatUnits(sellAmount, token.decimals);
 
     await prisma.trade.create({
@@ -235,7 +245,7 @@ export async function executeSell(
         type: 'SELL',
         monAmount: monReceived,
         tokenAmount: tokenAmountSold,
-        price: wmonReceived > 0n ? (parseFloat(monReceived) / parseFloat(tokenAmountSold)).toString() : '0',
+        price: parseFloat(monReceived) > 0 ? (parseFloat(monReceived) / parseFloat(tokenAmountSold)).toString() : '0',
         txHash: receipt.hash,
         executionTimeMs,
         status: 'SUCCESS',
