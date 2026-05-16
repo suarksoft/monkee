@@ -2,6 +2,7 @@
 
 import { motion } from "framer-motion";
 import { MessageSquare, Github } from "lucide-react";
+import Image from "next/image";
 
 export function Hero() {
   return (
@@ -21,6 +22,10 @@ export function Hero() {
           transition={{ duration: 0.6 }}
           className="text-center lg:text-left"
         >
+          <div className="flex items-center gap-4 mb-6 justify-center lg:justify-start">
+            <Image src="/logo.png" alt="MonadBot Logo" width={64} height={64} className="rounded-2xl" />
+            <span className="text-2xl font-bold text-foreground">MonadBot</span>
+          </div>
           <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold tracking-tight mb-6">
             <span className="gradient-text">Trade Smarter</span>
             <br />
@@ -64,8 +69,8 @@ export function Hero() {
               <div className="rounded-[2rem] bg-[#0a0a0a] overflow-hidden">
                 {/* Header */}
                 <div className="bg-[#1c1c1e] px-4 py-3 flex items-center gap-3 border-b border-border">
-                  <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary to-accent flex items-center justify-center">
-                    <span className="text-white font-bold text-sm">M</span>
+                  <div className="w-10 h-10 rounded-full overflow-hidden bg-white">
+                    <Image src="/logo.png" alt="MonadBot" width={40} height={40} className="w-full h-full object-contain" />
                   </div>
                   <div>
                     <p className="text-foreground font-semibold text-sm">MonadBot</p>
