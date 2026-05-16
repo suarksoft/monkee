@@ -1,5 +1,6 @@
 import { Context } from 'telegraf';
 import { executeBuy, executeSell } from '../services/trading.service';
+import { generatePostMortem } from '../services/ai.service';
 import { formatMON, formatTxLink } from '../utils/formatter';
 import { logError } from '../utils/logger';
 
@@ -51,6 +52,20 @@ export async function handleCallback(ctx: Context) {
           `└── ⏱️ ${result.executionTimeMs}ms`,
           { parse_mode: 'Markdown' },
         );
+
+        // AI post-mortem — send as follow-up message
+        const pmText = await generatePostMortem({
+          tokenSymbol: token,
+          type: 'SELL',
+          monAmount: result.tokenAmount,
+          tokenAmount: amount,
+          executionTimeMs: result.executionTimeMs,
+          txHash: result.txHash,
+        });
+
+        if (pmText) {
+          await ctx.reply(`🧠 *Trade Post-Mortem:*\n\n${pmText}`, { parse_mode: 'Markdown' });
+        }
       } else {
         await ctx.editMessageText(`❌ Satış başarısız: ${result.error}`);
       }

@@ -1,8 +1,8 @@
 import { ethers } from 'ethers';
 import { PrismaClient } from '@prisma/client';
 import { ERC20_ABI, ROUTER_ABI } from '../utils/constants';
-import { TokenAnalysis, TrendingToken, WalletAnalysis } from '../types';
-import { generateTokenComment } from './ai.service';
+import { TokenAnalysis, TrendingToken, WalletAnalysis, WalletDNA } from '../types';
+import { generateTokenComment, generateWalletDNA } from './ai.service';
 import { getProvider } from './wallet.service';
 import { log } from '../utils/logger';
 
@@ -149,53 +149,74 @@ export async function getTrending(): Promise<TrendingToken[]> {
   });
 }
 
-export async function analyzeWallet(address: string): Promise<WalletAnalysis> {
+export async function analyzeWallet(address: string): Promise<WalletAnalysis & { dnaText?: string }> {
   const provider = getProvider();
   const balance = await provider.getBalance(address);
 
-  // Check if this is a known user wallet
   const user = await prisma.user.findFirst({
     where: { walletAddress: address.toLowerCase() },
     include: { trades: true },
   });
 
+  let totalTrades = Math.floor(Math.random() * 80 + 20);
+  let winRate = Math.floor(Math.random() * 40 + 45);
+  let bestTrade = { token: 'CHOG', pnl: Math.floor(Math.random() * 200 + 50) };
+  let avgHoldTimeHours = Math.floor(Math.random() * 20 + 1);
+  let favoriteToken = 'CHOG';
+  let totalPnlMon = Math.floor(Math.random() * 100 - 20);
+
   if (user && user.trades.length > 0) {
     const trades = user.trades;
     const sells = trades.filter(t => t.type === 'SELL');
     const buys = trades.filter(t => t.type === 'BUY');
-    const winRate = sells.length > 0 ? Math.round((sells.filter(s => {
-      const avgBuy = buys.filter(b => b.tokenSymbol === s.tokenSymbol)
-        .reduce((sum, b) => sum + parseFloat(b.price), 0) / (buys.filter(b => b.tokenSymbol === s.tokenSymbol).length || 1);
+
+    totalTrades = trades.length;
+    winRate = sells.length > 0 ? Math.round((sells.filter(s => {
+      const buysForToken = buys.filter(b => b.tokenSymbol === s.tokenSymbol);
+      if (buysForToken.length === 0) return false;
+      const avgBuy = buysForToken.reduce((sum, b) => sum + parseFloat(b.price), 0) / buysForToken.length;
       return parseFloat(s.price) > avgBuy;
     }).length / sells.length) * 100) : 0;
 
-    const bestTrade = sells.reduce((best, t) => {
+    bestTrade = sells.reduce((best, t) => {
       const pnl = parseFloat(t.monAmount);
       return pnl > best.pnl ? { token: t.tokenSymbol, pnl } : best;
     }, { token: 'N/A', pnl: 0 });
 
-    return {
-      address,
-      totalTrades: trades.length,
-      winRate,
-      bestTrade,
-      avgHoldTime: '4 saat',
-      riskProfile: winRate > 60 ? 'Dengeli trader' : 'Agresif degen',
-      currentHoldings: [
-        { symbol: 'MON', value: ethers.formatEther(balance), pnl: '0%' },
-      ],
-    };
+    // Favorite token
+    const tokenCounts = trades.reduce((acc: Record<string, number>, t) => {
+      acc[t.tokenSymbol] = (acc[t.tokenSymbol] || 0) + 1;
+      return acc;
+    }, {});
+    favoriteToken = Object.entries(tokenCounts).sort((a, b) => b[1] - a[1])[0]?.[0] ?? 'CHOG';
+
+    // Total PnL
+    totalPnlMon = sells.reduce((sum, t) => sum + parseFloat(t.monAmount), 0) -
+      buys.reduce((sum, t) => sum + parseFloat(t.monAmount), 0);
   }
+
+  const dna: WalletDNA = {
+    address,
+    totalTrades,
+    winRate,
+    avgHoldTimeHours,
+    favoriteToken,
+    totalPnlMon: Math.round(totalPnlMon * 100) / 100,
+    tradeFrequency: totalTrades > 50 ? 'Çok aktif' : totalTrades > 10 ? 'Orta' : 'Seyrek',
+  };
+
+  const dnaText = await generateWalletDNA(dna);
 
   return {
     address,
-    totalTrades: Math.floor(Math.random() * 100),
-    winRate: Math.floor(Math.random() * 40 + 50),
-    bestTrade: { token: 'CHOG', pnl: Math.floor(Math.random() * 200 + 50) },
-    avgHoldTime: `${Math.floor(Math.random() * 20 + 1)} saat`,
-    riskProfile: Math.random() > 0.5 ? 'Agresif degen' : 'Dengeli trader',
+    totalTrades,
+    winRate,
+    bestTrade,
+    avgHoldTime: `${avgHoldTimeHours} saat`,
+    riskProfile: winRate > 60 ? 'Dengeli trader' : 'Agresif degen',
     currentHoldings: [
-      { symbol: 'MON', value: ethers.formatEther(balance), pnl: '0%' },
+      { symbol: 'MON', value: parseFloat(ethers.formatEther(balance)).toFixed(4), pnl: '0%' },
     ],
+    dnaText,
   };
 }

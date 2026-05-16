@@ -1,5 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
-import { ParsedIntent, Portfolio, TrendingToken, TokenAnalysis } from '../types';
+import { ParsedIntent, Portfolio, TrendingToken, TokenAnalysis, TradePostMortem, WalletDNA } from '../types';
 import { log, logError } from '../utils/logger';
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! });
@@ -51,6 +51,9 @@ Olası action'lar:
 "chog take profit %50" → {"action":"TAKE_PROFIT","token":"CHOG","percentage":"50"}
 "merhaba" → {"action":"CHAT"}
 "yardım" → {"action":"HELP"}
+"sabah özeti" → {"action":"BRIEFING"}
+"brifing" → {"action":"BRIEFING"}
+"günlük özet" → {"action":"BRIEFING"}
 
 Token sembollerini her zaman BÜYÜK HARF yaz. Türkçe ve İngilizce mesajları anlayabilmelisin.`;
 
@@ -166,5 +169,110 @@ export async function chatResponse(message: string): Promise<string> {
   } catch (error) {
     logError('AI', 'Chat failed', error);
     return '🤖 Bir hata oluştu, tekrar dene.';
+  }
+}
+
+export async function generatePostMortem(pm: TradePostMortem): Promise<string> {
+  try {
+    const response = await client.messages.create({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 400,
+      system: [
+        {
+          type: 'text',
+          text: `Sen bir crypto trading koçusun. Kullanıcının trade'ini analiz et ve kısa, samimi bir post-mortem yaz.
+Telegram Markdown formatı kullan. Türkçe. Güçlü yanları ve geliştirilebilecek noktaları belirt.
+Pozitif bir ton kullan ama gerçekçi ol. Max 5 satır.`,
+          cache_control: { type: 'ephemeral' },
+        },
+      ] as Anthropic.Messages.TextBlockParam[],
+      messages: [{
+        role: 'user',
+        content: `Trade: ${pm.type} $${pm.tokenSymbol}
+MON miktarı: ${pm.monAmount}
+Token miktarı: ${pm.tokenAmount}
+${pm.pnlPercent !== undefined ? `PnL: ${pm.pnlPercent > 0 ? '+' : ''}${pm.pnlPercent.toFixed(1)}%` : ''}
+${pm.entryPrice ? `Giriş fiyatı: ${pm.entryPrice}` : ''}
+${pm.exitPrice ? `Çıkış fiyatı: ${pm.exitPrice}` : ''}
+Execution süresi: ${pm.executionTimeMs}ms`,
+      }],
+    });
+
+    return response.content[0].type === 'text' ? response.content[0].text : '';
+  } catch (error) {
+    logError('AI', 'Post-mortem failed', error);
+    return '';
+  }
+}
+
+export async function generateWalletDNA(dna: WalletDNA): Promise<string> {
+  try {
+    const response = await client.messages.create({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 500,
+      system: [
+        {
+          type: 'text',
+          text: `Sen bir crypto trader psikologusun. Cüzdan istatistiklerinden trader'ın kişilik profilini çıkar.
+Telegram Markdown formatı. Türkçe. Yaratıcı ve özgün ol — "Erken Degen", "Sabırlı Balina", "FOMO Avcısı" gibi tipler kullan.
+Güçlü ve zayıf yanları net belirt. Spesifik ve kişisel hissettir.`,
+          cache_control: { type: 'ephemeral' },
+        },
+      ] as Anthropic.Messages.TextBlockParam[],
+      messages: [{
+        role: 'user',
+        content: `Adres: ${dna.address}
+Toplam trade: ${dna.totalTrades}
+Win rate: %${dna.winRate}
+Ortalama holding süresi: ${dna.avgHoldTimeHours} saat
+En çok işlem yapılan token: ${dna.favoriteToken}
+Toplam PnL: ${dna.totalPnlMon} MON
+Trade sıklığı: ${dna.tradeFrequency}`,
+      }],
+    });
+
+    return response.content[0].type === 'text' ? response.content[0].text : '';
+  } catch (error) {
+    logError('AI', 'Wallet DNA failed', error);
+    return '';
+  }
+}
+
+export async function generateDailyBriefing(
+  firstName: string,
+  portfolio: Portfolio,
+  trending: TrendingToken[],
+  marketSummary: string,
+): Promise<string> {
+  try {
+    const response = await client.messages.create({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 600,
+      system: [
+        {
+          type: 'text',
+          text: `Sen MonadBot'sun. Her sabah kullanıcıya kişiselleştirilmiş market brifing'i gönderiyorsun.
+Telegram Markdown formatı. Türkçe. Samimi ve enerjik ol.
+Portföy durumunu, öne çıkan fırsatları ve günün önerilerini içer.
+Max 10 satır, net ve actionable ol.`,
+          cache_control: { type: 'ephemeral' },
+        },
+      ] as Anthropic.Messages.TextBlockParam[],
+      messages: [{
+        role: 'user',
+        content: `Kullanıcı: ${firstName}
+Portföy değeri: ${portfolio.totalValue} MON
+Serbest bakiye: ${portfolio.freeBalance} MON
+Pozisyonlar: ${portfolio.positions.length > 0 ? portfolio.positions.map(p => `${p.symbol}: ${p.tokenAmount}`).join(', ') : 'Yok'}
+Win rate: %${portfolio.winRate}
+Market özeti: ${marketSummary}
+Trending tokenlar: ${trending.map(t => `${t.symbol} (${t.change > 0 ? '+' : ''}${t.change}%)`).join(', ')}`,
+      }],
+    });
+
+    return response.content[0].type === 'text' ? response.content[0].text : '';
+  } catch (error) {
+    logError('AI', 'Daily briefing failed', error);
+    return '';
   }
 }

@@ -2,6 +2,7 @@ import { Context } from 'telegraf';
 import { parseIntent, getTradeAdvice, chatResponse } from '../services/ai.service';
 import { executeBuy, executeSell, getPortfolio } from '../services/trading.service';
 import { analyzeToken, getTrending, analyzeWallet } from '../services/analytics.service';
+import { sendBriefingToUser } from '../services/briefing.service';
 import { getBalance, getWallet } from '../services/wallet.service';
 import {
   formatMON,
@@ -58,6 +59,10 @@ export async function handleMessage(ctx: Context) {
         break;
       case 'HELP':
         await handleHelp(ctx);
+        break;
+      case 'BRIEFING':
+        await ctx.sendChatAction('typing');
+        await sendBriefingToUser(ctx.telegram as never, userId, ctx);
         break;
       case 'STOP_LOSS':
         await ctx.reply(

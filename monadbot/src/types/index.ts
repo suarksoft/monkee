@@ -1,9 +1,31 @@
 export interface ParsedIntent {
-  action: 'BUY' | 'SELL' | 'PORTFOLIO' | 'TRENDING' | 'ANALYZE_TOKEN' | 'ANALYZE_WALLET' | 'SNIPER_ON' | 'SNIPER_OFF' | 'ADVICE' | 'STOP_LOSS' | 'TAKE_PROFIT' | 'HELP' | 'CHAT' | 'BALANCE';
+  action: 'BUY' | 'SELL' | 'PORTFOLIO' | 'TRENDING' | 'ANALYZE_TOKEN' | 'ANALYZE_WALLET' | 'SNIPER_ON' | 'SNIPER_OFF' | 'ADVICE' | 'STOP_LOSS' | 'TAKE_PROFIT' | 'HELP' | 'CHAT' | 'BALANCE' | 'BRIEFING';
   token?: string;
   amount?: string;
   address?: string;
   percentage?: string;
+}
+
+export interface TradePostMortem {
+  tokenSymbol: string;
+  type: 'BUY' | 'SELL';
+  monAmount: string;
+  tokenAmount: string;
+  entryPrice?: string;
+  exitPrice?: string;
+  pnlPercent?: number;
+  executionTimeMs: number;
+  txHash: string;
+}
+
+export interface WalletDNA {
+  address: string;
+  totalTrades: number;
+  winRate: number;
+  avgHoldTimeHours: number;
+  favoriteToken: string;
+  totalPnlMon: number;
+  tradeFrequency: string;
 }
 
 export interface TokenAnalysis {
