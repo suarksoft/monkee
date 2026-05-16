@@ -18,8 +18,8 @@ export function Footer() {
             className="text-center md:text-left"
           >
             <div className="flex items-center gap-2 justify-center md:justify-start mb-2">
-              <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-primary to-accent flex items-center justify-center">
-                <span className="text-white font-bold text-sm">M</span>
+              <div className="w-8 h-8 rounded-lg overflow-hidden bg-white">
+                <Image src="/logo.png" alt="MonadBot" width={32} height={32} className="w-full h-full object-contain" />
               </div>
               <span className="text-xl font-bold text-foreground">MonadBot</span>
             </div>
@@ -35,7 +35,9 @@ export function Footer() {
             className="flex items-center gap-6"
           >
             <a
-              href="#"
+              href="https://t.me/monkee_trade_bot"
+              target="_blank"
+              rel="noopener noreferrer"
               className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors"
             >
               <MessageSquare className="w-4 h-4" />
