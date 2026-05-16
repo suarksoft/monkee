@@ -30,7 +30,7 @@ async function getTokenHolderCount(tokenAddress: string): Promise<number> {
   return token?.holderCount ?? 0;
 }
 
-export async function analyzeToken(symbolOrAddress: string): Promise<TokenAnalysis> {
+export async function analyzeToken(symbolOrAddress: string, lang = 'Turkish'): Promise<TokenAnalysis> {
   const provider = getProvider();
 
   let token = await prisma.token.findFirst({
@@ -110,7 +110,7 @@ export async function analyzeToken(symbolOrAddress: string): Promise<TokenAnalys
     estimatedTokens,
   };
 
-  analysis.aiComment = await generateTokenComment(analysis);
+  analysis.aiComment = await generateTokenComment(analysis, lang);
   return analysis;
 }
 
@@ -149,7 +149,7 @@ export async function getTrending(): Promise<TrendingToken[]> {
   });
 }
 
-export async function analyzeWallet(address: string): Promise<WalletAnalysis & { dnaText?: string }> {
+export async function analyzeWallet(address: string, lang = 'Turkish'): Promise<WalletAnalysis & { dnaText?: string }> {
   const provider = getProvider();
   const balance = await provider.getBalance(address);
 

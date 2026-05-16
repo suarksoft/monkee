@@ -3,6 +3,7 @@ import { parseIntent, getTradeAdvice, chatResponse } from '../services/ai.servic
 import { executeBuy, executeSell, getPortfolio } from '../services/trading.service';
 import { analyzeToken, getTrending, analyzeWallet } from '../services/analytics.service';
 import { sendBriefingToUser } from '../services/briefing.service';
+import { createLimitOrder, getActiveOrders, cancelOrder } from '../services/limit-order.service';
 import { getBalance, getWallet } from '../services/wallet.service';
 import {
   formatMON,
@@ -70,6 +71,12 @@ export async function handleMessage(ctx: Context) {
       case 'BRIEFING':
         await ctx.sendChatAction('typing');
         await sendBriefingToUser(null as never, userId, ctx);
+        break;
+      case 'LIMIT_ORDER':
+        await handleLimitOrder(ctx, userId, intent.token!, intent.amount || '1', intent.targetPrice!, intent.amount === 'all' ? 'SELL' : 'BUY');
+        break;
+      case 'MY_ORDERS':
+        await handleMyOrders(ctx, userId);
         break;
       case 'STOP_LOSS':
         await ctx.reply(
@@ -194,8 +201,8 @@ async function handleTrending(ctx: Context) {
   );
 }
 
-async function handleAnalyzeToken(ctx: Context, token: string) {
-  const analysis = await analyzeToken(token);
+async function handleAnalyzeToken(ctx: Context, token: string, lang = 'Turkish') {
+  const analysis = await analyzeToken(token, lang);
 
   await ctx.reply(
     `🔍 *$${token} Analizi:*\n\n` +
@@ -212,9 +219,9 @@ async function handleAnalyzeToken(ctx: Context, token: string) {
   );
 }
 
-async function handleAnalyzeWallet(ctx: Context, address: string) {
+async function handleAnalyzeWallet(ctx: Context, address: string, lang = 'Turkish') {
   await ctx.sendChatAction('typing');
-  const analysis = await analyzeWallet(address);
+  const analysis = await analyzeWallet(address, lang);
 
   const holdings = analysis.currentHoldings.map(h =>
     `├── $${h.symbol}: ${h.value} (${h.pnl})`,
@@ -241,7 +248,6 @@ async function handleAnalyzeWallet(ctx: Context, address: string) {
     },
   );
 
-  // Send DNA profile as follow-up
   if (analysis.dnaText) {
     await ctx.reply(
       `🧬 *Wallet DNA:*\n\n${analysis.dnaText}`,
@@ -250,15 +256,79 @@ async function handleAnalyzeWallet(ctx: Context, address: string) {
   }
 }
 
-async function handleAdvice(ctx: Context, userId: string) {
+async function handleAdvice(ctx: Context, userId: string, lang = 'Turkish') {
   await ctx.sendChatAction('typing');
   const portfolio = await getPortfolio(userId);
   const trending = await getTrending();
-  const advice = await getTradeAdvice(portfolio, trending);
+  const advice = await getTradeAdvice(portfolio, trending, lang);
 
   await ctx.reply(
     `🤖 *AI Tavsiye:*\n\n${advice}`,
     { parse_mode: 'Markdown' },
+  );
+}
+
+async function handleLimitOrder(
+  ctx: Context,
+  userId: string,
+  token: string,
+  amount: string,
+  targetPrice: string,
+  side: 'BUY' | 'SELL',
+) {
+  if (!targetPrice) {
+    await ctx.reply('❌ Hedef fiyat belirtmelisin.\nÖrnek: _"CHOG 0.0003\'e düşünce 5 MON al"_', { parse_mode: 'Markdown' });
+    return;
+  }
+
+  try {
+    // Detect side from context: if price is below current → BUY, above → SELL
+    await createLimitOrder(userId, token, amount, targetPrice, side);
+
+    const emoji = side === 'BUY' ? '🟢' : '🔴';
+    const actionText = side === 'BUY' ? `${amount} MON ile alınacak` : `${amount === 'all' ? 'tamamı' : amount} satılacak`;
+
+    await ctx.reply(
+      `${emoji} *Limit Order Oluşturuldu!*\n\n` +
+      `├── Token: $${token}\n` +
+      `├── Hedef fiyat: ${targetPrice} MON\n` +
+      `├── İşlem: ${actionText}\n` +
+      `└── Durum: ⏳ Bekliyor\n\n` +
+      `_Fiyat hedefe ulaştığında otomatik işlem yapılacak._\n` +
+      `Emirlerini görmek için: "emirlerim" yaz`,
+      { parse_mode: 'Markdown' },
+    );
+  } catch (error: unknown) {
+    const err = error as { message?: string };
+    await ctx.reply(`❌ ${err.message}`);
+  }
+}
+
+async function handleMyOrders(ctx: Context, userId: string) {
+  const orders = await getActiveOrders(userId);
+
+  if (orders.length === 0) {
+    await ctx.reply('📋 Aktif limit order yok.\n\nOluşturmak için: _"CHOG 0.0003\'e düşünce 5 MON al"_', { parse_mode: 'Markdown' });
+    return;
+  }
+
+  const list = orders.map((o, i) => {
+    const p = o.params as { tokenSymbol: string; side: string; targetPrice: string; monAmount: string };
+    const emoji = p.side === 'BUY' ? '🟢' : '🔴';
+    return `${i + 1}. ${emoji} $${p.tokenSymbol} @ ${p.targetPrice} MON → ${p.side === 'BUY' ? p.monAmount + ' MON al' : p.monAmount + ' sat'}`;
+  }).join('\n');
+
+  const buttons = orders.map((o, i) => [{
+    text: `❌ #${i + 1} iptal`,
+    callback_data: `cancel_order:${o.id}`,
+  }]);
+
+  await ctx.reply(
+    `📋 *Aktif Emirlerin (${orders.length}):*\n\n${list}`,
+    {
+      parse_mode: 'Markdown',
+      reply_markup: { inline_keyboard: buttons },
+    },
   );
 }
 
@@ -271,6 +341,10 @@ async function handleHelp(ctx: Context) {
     `├── "CHOG sat hepsini"\n` +
     `├── "CHOG sat 50%"\n` +
     `└── "CHOG'a stop loss %15"\n\n` +
+    `⏰ *Limit Order:*\n` +
+    `├── "CHOG 0.0003'e düşünce 5 MON al"\n` +
+    `├── "YAKI 0.02 olunca sat hepsini"\n` +
+    `└── "emirlerim"\n\n` +
     `📊 *Analiz:*\n` +
     `├── "CHOG nasıl"\n` +
     `├── "Trending ne var"\n` +

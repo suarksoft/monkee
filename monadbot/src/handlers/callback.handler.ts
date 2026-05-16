@@ -1,6 +1,8 @@
 import { Context } from 'telegraf';
 import { executeBuy, executeSell } from '../services/trading.service';
 import { generatePostMortem } from '../services/ai.service';
+import { cancelOrder } from '../services/limit-order.service';
+import { generateShareCard } from '../services/share.service';
 import { formatMON, formatTxLink } from '../utils/formatter';
 import { logError } from '../utils/logger';
 
@@ -29,9 +31,16 @@ export async function handleCallback(ctx: Context) {
           `✅ *Alım tamamlandı!*\n\n` +
           `├── ${formatMON(result.tokenAmount)} $${token} aldın\n` +
           `├── TX: ${formatTxLink(result.txHash)}\n` +
-          `└── ⏱️ ${result.executionTimeMs}ms\n\n` +
-          `Stop-loss koymak ister misin?\n_"${token} stop loss %15" yaz_`,
-          { parse_mode: 'Markdown' },
+          `└── ⏱️ ${result.executionTimeMs}ms`,
+          {
+            parse_mode: 'Markdown',
+            reply_markup: {
+              inline_keyboard: [[
+                { text: '📢 Paylaş', callback_data: `share:BUY:${token}:${amount}:${result.tokenAmount}:${result.txHash.slice(0, 10)}:${result.executionTimeMs}` },
+                { text: `🛡️ Stop-loss koy`, callback_data: `suggest_sl:${token}` },
+              ]],
+            },
+          },
         );
       } else {
         await ctx.editMessageText(`❌ Alım başarısız: ${result.error}`);
@@ -50,10 +59,17 @@ export async function handleCallback(ctx: Context) {
           `├── ${formatMON(result.tokenAmount)} MON aldın\n` +
           `├── TX: ${formatTxLink(result.txHash)}\n` +
           `└── ⏱️ ${result.executionTimeMs}ms`,
-          { parse_mode: 'Markdown' },
+          {
+            parse_mode: 'Markdown',
+            reply_markup: {
+              inline_keyboard: [[
+                { text: '📢 Paylaş', callback_data: `share:SELL:${token}:${result.tokenAmount}:${amount}:${result.txHash.slice(0, 10)}:${result.executionTimeMs}` },
+              ]],
+            },
+          },
         );
 
-        // AI post-mortem — send as follow-up message
+        // AI post-mortem — follow-up message
         const pmText = await generatePostMortem({
           tokenSymbol: token,
           type: 'SELL',
@@ -69,6 +85,34 @@ export async function handleCallback(ctx: Context) {
       } else {
         await ctx.editMessageText(`❌ Satış başarısız: ${result.error}`);
       }
+    }
+
+    if (data.startsWith('share:')) {
+      const parts = data.split(':');
+      const [, type, token, monAmount, tokenAmount, shortTx, ms] = parts;
+      const card = generateShareCard({
+        type: type as 'BUY' | 'SELL',
+        tokenSymbol: token,
+        monAmount,
+        tokenAmount,
+        txHash: shortTx + '...',
+        executionTimeMs: parseInt(ms),
+      });
+      await ctx.reply(card, { parse_mode: 'Markdown' });
+    }
+
+    if (data.startsWith('suggest_sl:')) {
+      const token = data.split(':')[1];
+      await ctx.reply(
+        `🛡️ Stop-loss koymak için yaz:\n_"${token} stop loss %15"_`,
+        { parse_mode: 'Markdown' },
+      );
+    }
+
+    if (data.startsWith('cancel_order:')) {
+      const orderId = parseInt(data.split(':')[1]);
+      await cancelOrder(orderId, userId);
+      await ctx.editMessageText('✅ Limit order iptal edildi.');
     }
 
     if (data.startsWith('track:')) {

@@ -4,6 +4,7 @@ import { handleMessage } from './handlers/message.handler';
 import { handleCallback } from './handlers/callback.handler';
 import { startWhaleMonitor } from './services/whale.service';
 import { startDailyBriefing } from './services/briefing.service';
+import { startLimitOrderMonitor } from './services/limit-order.service';
 import { log } from './utils/logger';
 
 export function createBot(): Telegraf {
@@ -26,6 +27,9 @@ export function createBot(): Telegraf {
 export async function startBackgroundServices(bot: Telegraf): Promise<void> {
   // Whale monitor — polls DEX every 20s for price movements
   await startWhaleMonitor(bot);
+
+  // Limit order monitor — checks price conditions every 15s
+  startLimitOrderMonitor(bot);
 
   // Daily briefing — sends at 06:00 UTC (09:00 TR) every morning
   startDailyBriefing(bot, 6);
