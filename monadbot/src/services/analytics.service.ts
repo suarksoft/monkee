@@ -1,8 +1,9 @@
 import { ethers } from 'ethers';
 import { PrismaClient } from '@prisma/client';
-import { ERC20_ABI, ROUTER_ABI } from '../utils/constants';
+import { ERC20_ABI } from '../utils/constants';
 import { TokenAnalysis, TrendingToken, WalletAnalysis, WalletDNA } from '../types';
 import { generateTokenComment, generateWalletDNA } from './ai.service';
+import { getPriceFromPool } from './trading.service';
 import { getProvider } from './wallet.service';
 import { log } from '../utils/logger';
 
@@ -10,15 +11,7 @@ const prisma = new PrismaClient();
 
 async function getLivePrice(tokenAddress: string, decimals: number): Promise<string> {
   try {
-    const provider = getProvider();
-    const ROUTER = process.env.DEX_ROUTER_ADDRESS!;
-    const WMON = process.env.WMON_ADDRESS!;
-
-    const router = new ethers.Contract(ROUTER, ROUTER_ABI, provider);
-    const oneToken = ethers.parseUnits('1', decimals);
-    const amounts = await router.getAmountsOut(oneToken, [tokenAddress, WMON]) as bigint[];
-    const price = ethers.formatEther(amounts[1]);
-    return parseFloat(price).toFixed(8);
+    return await getPriceFromPool(tokenAddress, decimals);
   } catch {
     return '0';
   }

@@ -1,9 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 import { Telegraf } from 'telegraf';
-import { executeBuy, executeSell } from './trading.service';
-import { getProvider } from './wallet.service';
-import { ROUTER_ABI } from '../utils/constants';
-import { ethers } from 'ethers';
+import { executeBuy, executeSell, getPriceFromPool } from './trading.service';
 import { formatTxLink } from '../utils/formatter';
 import { log, logError } from '../utils/logger';
 
@@ -21,13 +18,8 @@ interface LimitOrderParams {
 
 async function getLivePrice(tokenAddress: string): Promise<number> {
   try {
-    const provider = getProvider();
-    const ROUTER = process.env.DEX_ROUTER_ADDRESS!;
-    const WMON = process.env.WMON_ADDRESS!;
-    const router = new ethers.Contract(ROUTER, ROUTER_ABI, provider);
-    const oneToken = ethers.parseUnits('1', 18);
-    const amounts = await router.getAmountsOut(oneToken, [tokenAddress, WMON]) as bigint[];
-    return parseFloat(ethers.formatEther(amounts[1]));
+    const price = await getPriceFromPool(tokenAddress, 18);
+    return parseFloat(price);
   } catch {
     return 0;
   }

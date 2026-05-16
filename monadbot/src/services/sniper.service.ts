@@ -1,6 +1,6 @@
 import { ethers } from 'ethers';
 import { PrismaClient } from '@prisma/client';
-import { FACTORY_ABI } from '../utils/constants';
+import { V3_FACTORY_ABI } from '../utils/constants';
 import { getProvider } from './wallet.service';
 import { log } from '../utils/logger';
 
@@ -11,7 +11,7 @@ export function startSniperMonitor(
   onNewToken: (symbol: string, address: string) => void,
 ) {
   const provider = getProvider();
-  const factory = new ethers.Contract(factoryAddress, FACTORY_ABI, provider);
+  const factory = new ethers.Contract(factoryAddress, V3_FACTORY_ABI, provider);
 
   factory.on('PairCreated', async (token0: string, token1: string, pair: string) => {
     log('Sniper', `New pair: ${pair}`, { token0, token1 });

@@ -1,28 +1,18 @@
-import { ethers } from 'ethers';
 import { PrismaClient } from '@prisma/client';
 import { Telegraf } from 'telegraf';
-import { ROUTER_ABI } from '../utils/constants';
-import { getProvider } from './wallet.service';
+import { getPriceFromPool } from './trading.service';
 import { log, logError } from '../utils/logger';
 
 const prisma = new PrismaClient();
 
-// Price snapshot: tokenAddress → last known price in MON
 const priceCache = new Map<string, number>();
-
-// Minimum MON movement to trigger alert (estimated swap size)
-const WHALE_THRESHOLD_PERCENT = 4; // 4% price move in one tick = likely whale
-const POLL_INTERVAL_MS = 20000; // check every 20 seconds
+const WHALE_THRESHOLD_PERCENT = 4;
+const POLL_INTERVAL_MS = 20000;
 
 async function getLivePriceMON(tokenAddress: string, decimals: number): Promise<number> {
   try {
-    const provider = getProvider();
-    const ROUTER = process.env.DEX_ROUTER_ADDRESS!;
-    const WMON = process.env.WMON_ADDRESS!;
-    const router = new ethers.Contract(ROUTER, ROUTER_ABI, provider);
-    const oneToken = ethers.parseUnits('1', decimals);
-    const amounts = await router.getAmountsOut(oneToken, [tokenAddress, WMON]) as bigint[];
-    return parseFloat(ethers.formatEther(amounts[1]));
+    const price = await getPriceFromPool(tokenAddress, decimals);
+    return parseFloat(price);
   } catch {
     return 0;
   }
