@@ -205,7 +205,7 @@ export async function analyzeWallet(address: string, lang = 'Turkish'): Promise<
     tradeFrequency: totalTrades > 50 ? 'Çok aktif' : totalTrades > 10 ? 'Orta' : 'Seyrek',
   };
 
-  const dnaText = await generateWalletDNA(dna);
+  const dnaText = await generateWalletDNA(dna, lang);
 
   return {
     address,
