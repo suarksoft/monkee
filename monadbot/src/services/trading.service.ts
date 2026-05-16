@@ -1,6 +1,6 @@
 import { ethers } from 'ethers';
 import { PrismaClient } from '@prisma/client';
-import { V3_ROUTER_ABI, WMON_ABI, ERC20_ABI, V3_POOL_ABI, V3_FACTORY_ABI, TRADING_DEFAULTS, KNOWN_POOLS } from '../utils/constants';
+import { V3_ROUTER_ABI, SWAPPER_ABI, WMON_ABI, ERC20_ABI, V3_POOL_ABI, V3_FACTORY_ABI, TRADING_DEFAULTS, KNOWN_POOLS } from '../utils/constants';
 import { getSigner, getProvider, getBalance } from './wallet.service';
 import { TradeResult, Portfolio } from '../types';
 import { log, logError } from '../utils/logger';
@@ -8,6 +8,7 @@ import { log, logError } from '../utils/logger';
 const prisma = new PrismaClient();
 const V3_ROUTER  = process.env.V3_ROUTER_ADDRESS!;
 const WMON_ADDR  = process.env.WMON_ADDRESS!;
+const SWAPPER    = process.env.SWAPPER_ADDRESS;
 const V3_FACTORY = '0x204faca1764b154221e35c0d20abb3c525710498';
 
 async function getPoolAddress(tokenAddress: string): Promise<{ poolAddress: string; fee: number } | null> {

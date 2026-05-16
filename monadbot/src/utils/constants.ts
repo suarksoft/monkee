@@ -1,3 +1,11 @@
+// MonadBotSwapper — V3 wrapper with 1% fee
+export const SWAPPER_ABI = [
+  'function buyTokens(address tokenOut, uint24 poolFee, uint256 amountOutMinimum, address recipient) payable returns (uint256 tokensOut)',
+  'function sellTokens(address tokenIn, uint24 poolFee, uint256 amountIn, uint256 amountOutMinimum, address recipient) returns (uint256 monOut)',
+  'function feeBps() view returns (uint256)',
+  'function feeRecipient() view returns (address)',
+];
+
 // Uniswap V3 SwapRouter02
 export const V3_ROUTER_ABI = [
   'function exactInputSingle((address tokenIn, address tokenOut, uint24 fee, address recipient, uint256 amountIn, uint256 amountOutMinimum, uint160 sqrtPriceLimitX96)) payable returns (uint256 amountOut)',

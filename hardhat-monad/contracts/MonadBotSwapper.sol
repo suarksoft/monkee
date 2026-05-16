@@ -1,62 +1,50 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
-interface IUniswapV2Router {
-    function swapExactETHForTokens(
-        uint amountOutMin,
-        address[] calldata path,
-        address to,
-        uint deadline
-    ) external payable returns (uint[] memory amounts);
+interface ISwapRouterV3 {
+    struct ExactInputSingleParams {
+        address tokenIn;
+        address tokenOut;
+        uint24 fee;
+        address recipient;
+        uint256 amountIn;
+        uint256 amountOutMinimum;
+        uint160 sqrtPriceLimitX96;
+    }
+    function exactInputSingle(ExactInputSingleParams calldata params) external payable returns (uint256 amountOut);
+}
 
-    function swapExactTokensForETH(
-        uint amountIn,
-        uint amountOutMin,
-        address[] calldata path,
-        address to,
-        uint deadline
-    ) external returns (uint[] memory amounts);
-
-    function getAmountsOut(
-        uint amountIn,
-        address[] calldata path
-    ) external view returns (uint[] memory amounts);
+interface IWMON {
+    function deposit() external payable;
+    function withdraw(uint256 amount) external;
+    function approve(address spender, uint256 amount) external returns (bool);
+    function balanceOf(address account) external view returns (uint256);
+    function transfer(address to, uint256 amount) external returns (bool);
+    function allowance(address owner, address spender) external view returns (uint256);
 }
 
 interface IERC20 {
     function approve(address spender, uint256 amount) external returns (bool);
     function transferFrom(address from, address to, uint256 amount) external returns (bool);
     function balanceOf(address account) external view returns (uint256);
+    function transfer(address to, uint256 amount) external returns (bool);
 }
 
 contract MonadBotSwapper {
     address public owner;
     address public router;
+    address public wmon;
     address public feeRecipient;
-    uint256 public feeBps = 100; // 1% default
+    uint256 public feeBps = 100; // 1%
 
-    event TokensBought(
-        address indexed user,
-        address indexed token,
-        uint256 monIn,
-        uint256 tokensOut,
-        uint256 fee
-    );
-
-    event TokensSold(
-        address indexed user,
-        address indexed token,
-        uint256 tokensIn,
-        uint256 monOut,
-        uint256 fee
-    );
-
+    event TokensBought(address indexed user, address indexed token, uint256 monIn, uint256 tokensOut, uint256 fee);
+    event TokensSold(address indexed user, address indexed token, uint256 tokensIn, uint256 monOut, uint256 fee);
     event FeeUpdated(uint256 newFeeBps);
-    event FeeRecipientUpdated(address newRecipient);
 
-    constructor(address _router, address _feeRecipient) {
+    constructor(address _router, address _wmon, address _feeRecipient) {
         owner = msg.sender;
         router = _router;
+        wmon = _wmon;
         feeRecipient = _feeRecipient;
     }
 
@@ -66,7 +54,7 @@ contract MonadBotSwapper {
     }
 
     function setFee(uint256 _feeBps) external onlyOwner {
-        require(_feeBps <= 500, "Max fee is 5%");
+        require(_feeBps <= 500, "Max 5%");
         feeBps = _feeBps;
         emit FeeUpdated(_feeBps);
     }
@@ -74,7 +62,6 @@ contract MonadBotSwapper {
     function setFeeRecipient(address _recipient) external onlyOwner {
         require(_recipient != address(0), "Zero address");
         feeRecipient = _recipient;
-        emit FeeRecipientUpdated(_recipient);
     }
 
     function transferOwnership(address newOwner) external onlyOwner {
@@ -82,78 +69,94 @@ contract MonadBotSwapper {
         owner = newOwner;
     }
 
-    /// @notice Buy tokens with MON — fee deducted from MON before swap
+    /// @notice Buy tokens with native MON — 1% fee deducted before swap
     function buyTokens(
-        address[] calldata path,
-        uint256 amountOutMin,
-        address to,
-        uint256 deadline
-    ) external payable returns (uint256[] memory amounts) {
+        address tokenOut,
+        uint24 poolFee,
+        uint256 amountOutMinimum,
+        address recipient
+    ) external payable returns (uint256 tokensOut) {
         require(msg.value > 0, "No MON sent");
 
         uint256 fee = (msg.value * feeBps) / 10000;
         uint256 swapAmount = msg.value - fee;
 
+        // Send fee
         if (fee > 0) {
             (bool sent, ) = feeRecipient.call{value: fee}("");
             require(sent, "Fee transfer failed");
         }
 
-        amounts = IUniswapV2Router(router).swapExactETHForTokens{value: swapAmount}(
-            amountOutMin,
-            path,
-            to,
-            deadline
+        // Wrap MON → WMON
+        IWMON(wmon).deposit{value: swapAmount}();
+
+        // Approve router
+        if (IWMON(wmon).allowance(address(this), router) < swapAmount) {
+            IWMON(wmon).approve(router, type(uint256).max);
+        }
+
+        // Swap WMON → token
+        tokensOut = ISwapRouterV3(router).exactInputSingle(
+            ISwapRouterV3.ExactInputSingleParams({
+                tokenIn: wmon,
+                tokenOut: tokenOut,
+                fee: poolFee,
+                recipient: recipient,
+                amountIn: swapAmount,
+                amountOutMinimum: amountOutMinimum,
+                sqrtPriceLimitX96: 0
+            })
         );
 
-        emit TokensBought(to, path[path.length - 1], msg.value, amounts[amounts.length - 1], fee);
+        emit TokensBought(recipient, tokenOut, msg.value, tokensOut, fee);
     }
 
-    /// @notice Sell tokens for MON — fee deducted from MON received
+    /// @notice Sell tokens for MON — 1% fee deducted from MON received
     function sellTokens(
+        address tokenIn,
+        uint24 poolFee,
         uint256 amountIn,
-        uint256 amountOutMin,
-        address[] calldata path,
-        address to,
-        uint256 deadline
-    ) external returns (uint256[] memory amounts) {
-        IERC20 token = IERC20(path[0]);
-        require(token.transferFrom(msg.sender, address(this), amountIn), "Transfer failed");
-        require(token.approve(router, amountIn), "Approve failed");
+        uint256 amountOutMinimum,
+        address recipient
+    ) external returns (uint256 monOut) {
+        // Pull tokens from user
+        require(IERC20(tokenIn).transferFrom(msg.sender, address(this), amountIn), "Transfer failed");
 
-        // Swap to this contract first so we can deduct fee
-        amounts = IUniswapV2Router(router).swapExactTokensForETH(
-            amountIn,
-            amountOutMin,
-            path,
-            address(this),
-            deadline
+        // Approve router
+        IERC20(tokenIn).approve(router, amountIn);
+
+        // Swap token → WMON (to this contract)
+        uint256 wmonReceived = ISwapRouterV3(router).exactInputSingle(
+            ISwapRouterV3.ExactInputSingleParams({
+                tokenIn: tokenIn,
+                tokenOut: wmon,
+                fee: poolFee,
+                recipient: address(this),
+                amountIn: amountIn,
+                amountOutMinimum: amountOutMinimum,
+                sqrtPriceLimitX96: 0
+            })
         );
 
-        uint256 monReceived = amounts[amounts.length - 1];
-        uint256 fee = (monReceived * feeBps) / 10000;
-        uint256 userAmount = monReceived - fee;
+        // Deduct fee
+        uint256 fee = (wmonReceived * feeBps) / 10000;
+        uint256 userAmount = wmonReceived - fee;
 
+        // Unwrap all WMON → MON
+        IWMON(wmon).withdraw(wmonReceived);
+
+        // Send fee
         if (fee > 0) {
             (bool feeSent, ) = feeRecipient.call{value: fee}("");
             require(feeSent, "Fee transfer failed");
         }
 
-        (bool userSent, ) = to.call{value: userAmount}("");
+        // Send remaining MON to user
+        (bool userSent, ) = recipient.call{value: userAmount}("");
         require(userSent, "User transfer failed");
 
-        emit TokensSold(to, path[0], amountIn, userAmount, fee);
-    }
-
-    /// @notice Preview buy: how many tokens for X MON (after fee)
-    function getTokensOut(
-        uint256 monAmount,
-        address[] calldata path
-    ) external view returns (uint256 tokensOut, uint256 fee) {
-        fee = (monAmount * feeBps) / 10000;
-        uint256 swapAmount = monAmount - fee;
-        uint256[] memory amounts = IUniswapV2Router(router).getAmountsOut(swapAmount, path);
-        tokensOut = amounts[amounts.length - 1];
+        monOut = userAmount;
+        emit TokensSold(recipient, tokenIn, amountIn, monOut, fee);
     }
 
     receive() external payable {}

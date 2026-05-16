@@ -1,17 +1,16 @@
 import { buildModule } from "@nomicfoundation/hardhat-ignition/modules";
 
-// Uniswap V2 Router on Monad Testnet
-const BEAN_ROUTER = "0xfb8e1c3b833f9e67a71c859a132cf783b645e436";
-
-// Fee recipient — replace with your wallet address
-const FEE_RECIPIENT = process.env.FEE_RECIPIENT || "0x0000000000000000000000000000000000000001";
+// Monad Mainnet — Uniswap V3
+const V3_ROUTER   = "0xfe31f71c1b106eac32f1a19239c9a9a72ddfb900";
+const WMON        = "0x3bd359C1119dA7Da1D913D1C4D2B7c461115433A";
+const FEE_RECIPIENT = process.env.FEE_RECIPIENT || "0x94C0Eed75bD91684621D0b8464e289356E95A3EF";
 
 const MonadBotSwapperModule = buildModule("MonadBotSwapper", (m) => {
-  const router = m.getParameter("router", BEAN_ROUTER);
+  const router       = m.getParameter("router", V3_ROUTER);
+  const wmon         = m.getParameter("wmon", WMON);
   const feeRecipient = m.getParameter("feeRecipient", FEE_RECIPIENT);
 
-  const swapper = m.contract("MonadBotSwapper", [router, feeRecipient]);
-
+  const swapper = m.contract("MonadBotSwapper", [router, wmon, feeRecipient]);
   return { swapper };
 });
 
