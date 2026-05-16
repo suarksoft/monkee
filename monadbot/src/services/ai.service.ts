@@ -57,15 +57,15 @@ Olası action'lar:
 
 Token sembollerini her zaman BÜYÜK HARF yaz. Türkçe ve İngilizce mesajları anlayabilmelisin.`;
 
-const CHAT_SYSTEM_PROMPT = `Sen MonadBot'sun. Monad blockchain'de çalışan bir Telegram trading asistanısın.
-Kullanıcıyla arkadaşça, kısa konuş. Türkçe.
-Trading ile ilgili sorulara cevap ver.
-Monad testnet'teki aktif tokenlar: CHOG, YAKI (Moyaki), DAK (Molandak), BEAN.
-Gerektiğinde kullanıcıyı yönlendir:
-- Token almak için: "chog al 5 mon" yaz
-- Portföy görmek için: "portföyüm" yaz
-- Trending görmek için: "trending" yaz
-- Tavsiye için: "ne alayım" yaz`;
+const CHAT_SYSTEM_PROMPT = `You are MonadBot, a Telegram trading assistant running on Monad blockchain.
+Be friendly and concise. ALWAYS respond in the exact same language the user writes in — if they write Turkish, reply in Turkish; if English, reply in English; etc.
+Answer trading-related questions.
+Active tokens on Monad testnet: CHOG, YAKI (Moyaki), DAK (Molandak), BEAN.
+Guide the user when needed:
+- To buy a token: write "buy chog 5 mon" or "chog al 5 mon"
+- To see portfolio: write "portfolio" or "portföyüm"
+- To see trending: write "trending"
+- For advice: write "what should I buy" or "ne alayım"`;
 
 export async function parseIntent(message: string): Promise<ParsedIntent> {
   try {
@@ -94,7 +94,7 @@ export async function parseIntent(message: string): Promise<ParsedIntent> {
   }
 }
 
-export async function getTradeAdvice(portfolio: Portfolio, trending: TrendingToken[]): Promise<string> {
+export async function getTradeAdvice(portfolio: Portfolio, trending: TrendingToken[], lang = 'Turkish'): Promise<string> {
   try {
     const response = await client.messages.create({
       model: 'claude-sonnet-4-20250514',
@@ -102,13 +102,13 @@ export async function getTradeAdvice(portfolio: Portfolio, trending: TrendingTok
       system: [
         {
           type: 'text',
-          text: `Sen MonadBot'sun — Monad blockchain trading asistanısın.
-Kullanıcının portföyünü ve trending tokenları analiz edip kısa, actionable tavsiye ver.
-Telegram Markdown formatında yaz. Emoji kullan ama abartma.
-Her zaman risk uyarısı ekle ama kısa tut.
-3'ten fazla token önerme. Her öneri için neden önerdiğini 1 cümleyle açıkla.
-Monad testnet tokenları: CHOG, YAKI, DAK, BEAN.
-Türkçe yaz.`,
+          text: `You are MonadBot — a Monad blockchain trading assistant.
+Analyze the user's portfolio and trending tokens and give short, actionable advice.
+Write in Telegram Markdown format. Use emojis but don't overdo it.
+Always add a brief risk warning.
+Don't suggest more than 3 tokens. Explain each suggestion in 1 sentence.
+Monad testnet tokens: CHOG, YAKI, DAK, BEAN.
+IMPORTANT: Respond in ${lang}.`,
           cache_control: { type: 'ephemeral' },
         },
       ] as Anthropic.Messages.TextBlockParam[],
@@ -125,7 +125,7 @@ Türkçe yaz.`,
   }
 }
 
-export async function generateTokenComment(analysis: Partial<TokenAnalysis>): Promise<string> {
+export async function generateTokenComment(analysis: Partial<TokenAnalysis>, lang = 'Turkish'): Promise<string> {
   try {
     const response = await client.messages.create({
       model: 'claude-haiku-4-5-20251001',
@@ -133,7 +133,7 @@ export async function generateTokenComment(analysis: Partial<TokenAnalysis>): Pr
       system: [
         {
           type: 'text',
-          text: 'Kısa (max 1 cümle) token analizi yap. Türkçe. Emoji yok. Sadece analiz.',
+          text: `Write a short (max 1 sentence) token analysis. No emojis. Analysis only. Respond in ${lang}.`,
           cache_control: { type: 'ephemeral' },
         },
       ] as Anthropic.Messages.TextBlockParam[],
@@ -172,7 +172,7 @@ export async function chatResponse(message: string): Promise<string> {
   }
 }
 
-export async function generatePostMortem(pm: TradePostMortem): Promise<string> {
+export async function generatePostMortem(pm: TradePostMortem, lang = 'Turkish'): Promise<string> {
   try {
     const response = await client.messages.create({
       model: 'claude-sonnet-4-20250514',
@@ -180,9 +180,9 @@ export async function generatePostMortem(pm: TradePostMortem): Promise<string> {
       system: [
         {
           type: 'text',
-          text: `Sen bir crypto trading koçusun. Kullanıcının trade'ini analiz et ve kısa, samimi bir post-mortem yaz.
-Telegram Markdown formatı kullan. Türkçe. Güçlü yanları ve geliştirilebilecek noktaları belirt.
-Pozitif bir ton kullan ama gerçekçi ol. Max 5 satır.`,
+          text: `You are a crypto trading coach. Analyze the user's trade and write a short, honest post-mortem.
+Use Telegram Markdown format. Highlight strengths and areas to improve.
+Use a positive but realistic tone. Max 5 lines. Respond in ${lang}.`,
           cache_control: { type: 'ephemeral' },
         },
       ] as Anthropic.Messages.TextBlockParam[],

@@ -1,7 +1,7 @@
 import { buildModule } from "@nomicfoundation/hardhat-ignition/modules";
 
-// Bean Exchange Router on Monad Testnet
-const BEAN_ROUTER = "0xCa810D095e90Daae6e867c19DF6D9A8C56db2c89";
+// Uniswap V2 Router on Monad Testnet
+const BEAN_ROUTER = "0xfb8e1c3b833f9e67a71c859a132cf783b645e436";
 
 // Fee recipient — replace with your wallet address
 const FEE_RECIPIENT = process.env.FEE_RECIPIENT || "0x0000000000000000000000000000000000000001";
