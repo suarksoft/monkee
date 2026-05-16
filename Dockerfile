@@ -1,9 +1,11 @@
-FROM node:20-alpine
+FROM node:20-slim
 
 WORKDIR /app
 
+RUN apt-get update -y && apt-get install -y openssl && rm -rf /var/lib/apt/lists/*
+
 COPY monadbot/package*.json ./
-RUN npm ci --only=production=false
+RUN npm ci
 
 COPY monadbot/prisma ./prisma
 RUN npx prisma generate
