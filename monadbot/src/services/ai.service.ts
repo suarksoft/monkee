@@ -8,7 +8,7 @@ const INTENT_SYSTEM_PROMPT = `Sen MonadBot'sun — Monad blockchain'de çalışa
 Kullanıcının mesajını analiz et ve ne yapmak istediğini çıkar.
 
 SADECE aşağıdaki JSON formatında cevap ver, başka hiçbir şey yazma:
-{"action":"ACTION","token":"TOKEN","amount":"AMOUNT","address":"ADDRESS","percentage":"PERCENT"}
+{"action":"ACTION","token":"TOKEN","amount":"AMOUNT","address":"ADDRESS","percentage":"PERCENT","targetPrice":"PRICE"}
 
 Olası action'lar:
 - BUY → kullanıcı token almak istiyor (token ve amount gerekli)
@@ -22,6 +22,8 @@ Olası action'lar:
 - ADVICE → kullanıcı ne yapması gerektiğini soruyor
 - STOP_LOSS → kullanıcı stop loss koymak istiyor (token ve percentage gerekli)
 - TAKE_PROFIT → kullanıcı take profit koymak istiyor (token ve percentage gerekli)
+- LIMIT_ORDER → kullanıcı belirli fiyatta otomatik alım/satım istiyor (token, amount, targetPrice gerekli)
+- MY_ORDERS → kullanıcı aktif emirlerini görmek istiyor
 - BALANCE → kullanıcı bakiyesini öğrenmek istiyor
 - HELP → kullanıcı yardım istiyor
 - CHAT → yukarıdakilerin hiçbirine uymayan genel sohbet
@@ -49,6 +51,11 @@ Olası action'lar:
 "sniper kapat" → {"action":"SNIPER_OFF"}
 "chog'a stop loss %15" → {"action":"STOP_LOSS","token":"CHOG","percentage":"15"}
 "chog take profit %50" → {"action":"TAKE_PROFIT","token":"CHOG","percentage":"50"}
+"chog 0.0003'e düşünce 5 mon al" → {"action":"LIMIT_ORDER","token":"CHOG","amount":"5","targetPrice":"0.0003"}
+"chog 0.001 olunca al 2 mon" → {"action":"LIMIT_ORDER","token":"CHOG","amount":"2","targetPrice":"0.001"}
+"yaki 0.005'e çıkınca sat hepsini" → {"action":"LIMIT_ORDER","token":"YAKI","amount":"all","targetPrice":"0.005"}
+"emirlerim" → {"action":"MY_ORDERS"}
+"aktif emirlerim" → {"action":"MY_ORDERS"}
 "merhaba" → {"action":"CHAT"}
 "yardım" → {"action":"HELP"}
 "sabah özeti" → {"action":"BRIEFING"}
@@ -205,7 +212,7 @@ Execution süresi: ${pm.executionTimeMs}ms`,
   }
 }
 
-export async function generateWalletDNA(dna: WalletDNA): Promise<string> {
+export async function generateWalletDNA(dna: WalletDNA, lang = 'Turkish'): Promise<string> {
   try {
     const response = await client.messages.create({
       model: 'claude-sonnet-4-20250514',
@@ -213,9 +220,9 @@ export async function generateWalletDNA(dna: WalletDNA): Promise<string> {
       system: [
         {
           type: 'text',
-          text: `Sen bir crypto trader psikologusun. Cüzdan istatistiklerinden trader'ın kişilik profilini çıkar.
-Telegram Markdown formatı. Türkçe. Yaratıcı ve özgün ol — "Erken Degen", "Sabırlı Balina", "FOMO Avcısı" gibi tipler kullan.
-Güçlü ve zayıf yanları net belirt. Spesifik ve kişisel hissettir.`,
+          text: `You are a crypto trader psychologist. Extract a personality profile from wallet statistics.
+Use Telegram Markdown format. Be creative and original — use archetypes like "Early Degen", "Patient Whale", "FOMO Hunter".
+Clearly state strengths and weaknesses. Make it feel specific and personal. Respond in ${lang}.`,
           cache_control: { type: 'ephemeral' },
         },
       ] as Anthropic.Messages.TextBlockParam[],
@@ -243,6 +250,7 @@ export async function generateDailyBriefing(
   portfolio: Portfolio,
   trending: TrendingToken[],
   marketSummary: string,
+  lang = 'Turkish',
 ): Promise<string> {
   try {
     const response = await client.messages.create({
@@ -251,10 +259,10 @@ export async function generateDailyBriefing(
       system: [
         {
           type: 'text',
-          text: `Sen MonadBot'sun. Her sabah kullanıcıya kişiselleştirilmiş market brifing'i gönderiyorsun.
-Telegram Markdown formatı. Türkçe. Samimi ve enerjik ol.
-Portföy durumunu, öne çıkan fırsatları ve günün önerilerini içer.
-Max 10 satır, net ve actionable ol.`,
+          text: `You are MonadBot. Every morning you send users a personalized market briefing.
+Use Telegram Markdown format. Be friendly and energetic.
+Include portfolio status, key opportunities, and today's recommendations.
+Max 10 lines, clear and actionable. Respond in ${lang}.`,
           cache_control: { type: 'ephemeral' },
         },
       ] as Anthropic.Messages.TextBlockParam[],

@@ -1,9 +1,10 @@
 export interface ParsedIntent {
-  action: 'BUY' | 'SELL' | 'PORTFOLIO' | 'TRENDING' | 'ANALYZE_TOKEN' | 'ANALYZE_WALLET' | 'SNIPER_ON' | 'SNIPER_OFF' | 'ADVICE' | 'STOP_LOSS' | 'TAKE_PROFIT' | 'HELP' | 'CHAT' | 'BALANCE' | 'BRIEFING';
+  action: 'BUY' | 'SELL' | 'PORTFOLIO' | 'TRENDING' | 'ANALYZE_TOKEN' | 'ANALYZE_WALLET' | 'SNIPER_ON' | 'SNIPER_OFF' | 'ADVICE' | 'STOP_LOSS' | 'TAKE_PROFIT' | 'HELP' | 'CHAT' | 'BALANCE' | 'BRIEFING' | 'LIMIT_ORDER' | 'MY_ORDERS';
   token?: string;
   amount?: string;
   address?: string;
   percentage?: string;
+  targetPrice?: string;
 }
 
 export interface TradePostMortem {

@@ -13,11 +13,18 @@ import {
 } from '../utils/formatter';
 import { logError } from '../utils/logger';
 
+function detectLang(text: string): string {
+  if (/[çğışöüÇĞİŞÖÜ]/.test(text)) return 'Turkish';
+  if (/[a-zA-Z]{3,}/.test(text)) return 'English';
+  return 'Turkish';
+}
+
 export async function handleMessage(ctx: Context) {
   if (!ctx.message || !('text' in ctx.message)) return;
 
   const userId = ctx.from!.id.toString();
   const message = ctx.message.text;
+  const lang = detectLang(message);
 
   if (message.startsWith('/')) return;
 
@@ -28,10 +35,10 @@ export async function handleMessage(ctx: Context) {
 
     switch (intent.action) {
       case 'BUY':
-        await handleBuy(ctx, intent.token!, intent.amount || '1');
+        await handleBuy(ctx, intent.token!, intent.amount || '1', lang);
         break;
       case 'SELL':
-        await handleSell(ctx, intent.token!, intent.amount || 'all');
+        await handleSell(ctx, intent.token!, intent.amount || 'all', lang);
         break;
       case 'PORTFOLIO':
         await handlePortfolio(ctx, userId);
@@ -43,13 +50,13 @@ export async function handleMessage(ctx: Context) {
         await handleTrending(ctx);
         break;
       case 'ANALYZE_TOKEN':
-        await handleAnalyzeToken(ctx, intent.token!);
+        await handleAnalyzeToken(ctx, intent.token!, lang);
         break;
       case 'ANALYZE_WALLET':
-        await handleAnalyzeWallet(ctx, intent.address!);
+        await handleAnalyzeWallet(ctx, intent.address!, lang);
         break;
       case 'ADVICE':
-        await handleAdvice(ctx, userId);
+        await handleAdvice(ctx, userId, lang);
         break;
       case 'SNIPER_ON':
         await ctx.reply('🎯 *Sniper modu açıldı!*\nYeni token çıktığında bildireceğim.', { parse_mode: 'Markdown' });
@@ -89,9 +96,9 @@ export async function handleMessage(ctx: Context) {
   }
 }
 
-async function handleBuy(ctx: Context, token: string, amount: string) {
+async function handleBuy(ctx: Context, token: string, amount: string, lang = 'Turkish') {
   try {
-    const analysis = await analyzeToken(token);
+    const analysis = await analyzeToken(token, lang);
 
     await ctx.reply(
       `🔍 *$${token}* analiz ediyorum...\n\n` +
@@ -119,7 +126,7 @@ async function handleBuy(ctx: Context, token: string, amount: string) {
   }
 }
 
-async function handleSell(ctx: Context, token: string, amount: string) {
+async function handleSell(ctx: Context, token: string, amount: string, lang = 'Turkish') {
   await ctx.reply(
     `📤 *$${token}* satmak istiyorsun.\n` +
     `Miktar: ${amount === 'all' ? 'Tamamını' : amount}\n\n` +
